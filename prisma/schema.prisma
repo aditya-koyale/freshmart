@@ -1,0 +1,491 @@
+// FreshMart — Prisma schema (Version 1)
+// Source of truth: FreshMart SRS Parts 1–12.
+// Conventions: UUID primary keys, createdAt/updatedAt on every model,
+// soft delete (deletedAt) on business-critical models per SRS Part 10 §1.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  PACKED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  UPI
+  DEBIT_CARD
+  CREDIT_CARD
+  COD
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+enum ComplaintStatus {
+  SUBMITTED
+  APPROVED_REPLACEMENT
+  APPROVED_REFUND
+  REJECTED
+}
+
+// ───────────────────────── User & Address ─────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  mobileNumber String   @unique
+  passwordHash String
+  role         Role     @default(CUSTOMER)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Reserved for Version 2 (email/OTP verification) — nullable so it can be
+  // adopted without a breaking migration. See SRS Part 12 §1 decision.
+  emailVerifiedAt DateTime?
+
+  addresses     Address[]
+  orders        Order[]
+  reviews       Review[]
+  wishlistItems WishlistItem[]
+  cartItems     CartItem[]
+  auditLogs     AuditLog[]
+  complaints    OrderComplaint[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@index([role])
+}
+
+model Address {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String // e.g. "Home", "Office"
+  fullName     String
+  mobileNumber String
+  houseNumber  String
+  buildingName String?
+  street       String
+  landmark     String?
+  area         String
+  city         String
+  state        String
+  pinCode      String
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([userId])
+}
+
+// ───────────────────────── Auth Support ─────────────────────────
+
+// Single-use, expiring tokens for the Forgot Password flow. The raw token
+// is emailed to the user; only its SHA-256 hash is stored, so a database
+// leak alone can't be used to reset accounts (same principle as password
+// hashing, applied to reset tokens).
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ───────────────────────── Catalog ─────────────────────────
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  iconUrl     String?
+  imageUrl    String?
+  displayOrder Int      @default(0)
+  isHidden    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  products Product[]
+
+  @@index([slug])
+}
+
+model Product {
+  id                String    @id @default(uuid())
+  categoryId        String
+  category          Category  @relation(fields: [categoryId], references: [id])
+  name              String
+  slug              String    @unique
+  shortDescription  String?
+  description       String?
+  origin            String?
+  freshnessInfo     String?
+  storageInfo       String?
+  isFeatured        Boolean   @default(false)
+  isBestSeller      Boolean   @default(false)
+  isSeasonal        Boolean   @default(false)
+  isNewArrival      Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  sku               String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  images         ProductImage[]
+  weightVariants WeightVariant[]
+  reviews        Review[]
+  wishlistItems  WishlistItem[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+
+  @@index([categoryId])
+  @@index([slug])
+}
+
+model ProductImage {
+  id           String  @id @default(uuid())
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url          String
+  publicId     String? // Cloudinary public_id, used for deletion
+  displayOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+// A weight variant is the actual purchasable unit (e.g. 500g, 1kg).
+// The administrator creates/edits/removes these per product (SRS decision,
+// "Order Quantity" §2): minimum purchasable quantity = one variant unit.
+model WeightVariant {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  label       String // e.g. "250g", "1kg"
+  price       Decimal  @db.Decimal(10, 2)
+  salePrice   Decimal? @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inventory  Inventory?
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+}
+
+// Stock and reservation tracking, separated from WeightVariant so that
+// concurrency-sensitive fields are isolated (SRS Part 11 §3, stock holds).
+model Inventory {
+  id                 String        @id @default(uuid())
+  weightVariantId    String        @unique
+  weightVariant      WeightVariant @relation(fields: [weightVariantId], references: [id], onDelete: Cascade)
+  stock              Int           @default(0)
+  reservedStock      Int           @default(0)
+  lowStockThreshold  Int           @default(10) // SRS Part 12 §5 default
+  updatedAt          DateTime      @updatedAt
+
+  stockHistory InventoryHistory[]
+}
+
+model InventoryHistory {
+  id          String    @id @default(uuid())
+  inventoryId String
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  change      Int // positive = added, negative = deducted
+  reason      String // e.g. "ORDER_PLACED", "MANUAL_ADJUSTMENT", "ORDER_CANCELLED"
+  createdAt   DateTime  @default(now())
+
+  @@index([inventoryId])
+}
+
+// ───────────────────────── Cart & Wishlist ─────────────────────────
+
+model CartItem {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  weightVariantId String
+  weightVariant   WeightVariant @relation(fields: [weightVariantId], references: [id], onDelete: Cascade)
+  quantity        Int           @default(1)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([userId, weightVariantId])
+  @@index([userId])
+}
+
+model WishlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+// ───────────────────────── Promotions ─────────────────────────
+
+model Coupon {
+  id              String     @id @default(uuid())
+  code            String     @unique
+  type            CouponType
+  discountValue   Decimal    @db.Decimal(10, 2)
+  minOrderValue   Decimal?   @db.Decimal(10, 2)
+  maxDiscount     Decimal?   @db.Decimal(10, 2)
+  usageLimit      Int?
+  firstOrderOnly  Boolean    @default(false)
+  startDate       DateTime
+  endDate         DateTime
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  usages CouponUsage[]
+  orders Order[]
+
+  @@index([code])
+}
+
+model CouponUsage {
+  id        String   @id @default(uuid())
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId    String
+  orderId   String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([couponId])
+  @@index([userId])
+}
+
+model Banner {
+  id              String    @id @default(uuid())
+  imageUrl        String
+  title           String?
+  subtitle        String?
+  buttonText      String?
+  destinationLink String?
+  displayOrder    Int       @default(0)
+  isActive        Boolean   @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ───────────────────────── Delivery ─────────────────────────
+
+model DeliveryArea {
+  id               String   @id @default(uuid())
+  pinCode          String   @unique
+  areaName         String
+  deliveryCharge   Decimal  @db.Decimal(10, 2) @default(0)
+  freeDeliveryAbove Decimal? @db.Decimal(10, 2)
+  minOrderValue    Decimal  @db.Decimal(10, 2) @default(0)
+  estimatedMinutes Int      @default(60)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([pinCode])
+}
+
+model DeliverySlot {
+  id           String   @id @default(uuid())
+  date         DateTime
+  startTime    String // e.g. "10:00"
+  endTime      String // e.g. "12:00"
+  maxOrders    Int      @default(50)
+  currentLoad  Int      @default(0)
+  isDisabled   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([date])
+}
+
+// ───────────────────────── Orders ─────────────────────────
+
+model Order {
+  id              String        @id @default(uuid())
+  orderNumber     String        @unique
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  addressId       String
+  address         Address       @relation(fields: [addressId], references: [id])
+  deliverySlotId  String?
+  deliverySlot    DeliverySlot? @relation(fields: [deliverySlotId], references: [id])
+  couponId        String?
+  coupon          Coupon?       @relation(fields: [couponId], references: [id])
+
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus @default(PENDING)
+  status          OrderStatus   @default(PENDING)
+
+  subtotal        Decimal       @db.Decimal(10, 2)
+  discountAmount  Decimal       @db.Decimal(10, 2) @default(0)
+  deliveryCharge  Decimal       @db.Decimal(10, 2) @default(0)
+  taxAmount       Decimal       @db.Decimal(10, 2) @default(0)
+  grandTotal      Decimal       @db.Decimal(10, 2)
+
+  customerNote    String?
+  internalNote    String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+  complaints      OrderComplaint[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([orderNumber])
+}
+
+// Price is snapshotted at purchase time and never changes even if the
+// product's current price changes later (SRS Part 5 §10).
+model OrderItem {
+  id               String        @id @default(uuid())
+  orderId          String
+  order            Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product       @relation(fields: [productId], references: [id])
+  weightVariantId  String
+  weightVariant    WeightVariant @relation(fields: [weightVariantId], references: [id])
+  weightLabel      String // snapshot, in case the variant is later renamed/removed
+  quantity         Int
+  priceAtPurchase  Decimal       @db.Decimal(10, 2)
+  total            Decimal       @db.Decimal(10, 2)
+
+  @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String?
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+// Perishable-goods complaint flow (SRS Part 12 §9).
+model OrderComplaint {
+  id          String          @id @default(uuid())
+  orderId     String
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+  reason      String // damaged / spoiled / wrong item / missing item
+  description String?
+  status      ComplaintStatus @default(SUBMITTED)
+  resolutionNote String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([orderId])
+}
+
+// ───────────────────────── Reviews ─────────────────────────
+
+model Review {
+  id        String    @id @default(uuid())
+  productId String
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  rating    Int // 1–5
+  comment   String?
+  isApproved Boolean  @default(false)
+  isHidden  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([productId])
+  @@index([userId])
+}
+
+// ───────────────────────── Notifications, Settings, Audit ─────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String? // null = broadcast to all customers
+  title     String
+  message   String
+  type      String // e.g. "ORDER_UPDATE", "OFFER", "ANNOUNCEMENT"
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Key-value business configuration (business name, currency, tax settings,
+// emergency controls, etc.) — SRS Part 4 §20, Part 11 §16.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // e.g. "PRODUCT_UPDATED", "PRICE_CHANGED", "ORDER_STATUS_CHANGED"
+  entity    String // e.g. "Product", "Order"
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+}

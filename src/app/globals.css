@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  FreshMart design tokens (light mode default).
+  Colors are stored as "R G B" triples (no rgb()) so Tailwind's
+  <alpha-value> opacity syntax works — see tailwind.config.ts.
+*/
+:root {
+  --color-primary: 27 106 64; /* deep fresh green #1B6A40 */
+  --color-primary-light: 58 150 99; /* #3A9663 */
+  --color-primary-dark: 16 71 43; /* #10472B */
+
+  --color-accent: 224 122 49; /* warm mango orange #E07A31 */
+  --color-accent-light: 240 163 105; /* #F0A369 */
+
+  --color-surface: 255 255 255;
+  --color-surface-subtle: 250 249 246; /* warm off-white, not stark white */
+  --color-surface-raised: 255 255 255;
+
+  --color-ink: 26 31 28; /* near-black, slight green tint */
+  --color-ink-muted: 90 99 94;
+  --color-ink-faint: 150 157 153;
+
+  --color-success: 27 106 64;
+  --color-warning: 224 122 49;
+  --color-error: 197 48 48;
+
+  --color-border: 230 228 222;
+}
+
+.dark {
+  --color-primary: 73 173 122; /* brighter green for dark bg contrast */
+  --color-primary-light: 102 196 148;
+  --color-primary-dark: 27 106 64;
+
+  --color-accent: 237 154 92;
+  --color-accent-light: 247 188 142;
+
+  --color-surface: 15 20 17;
+  --color-surface-subtle: 21 27 23;
+  --color-surface-raised: 27 34 29;
+
+  --color-ink: 236 237 233;
+  --color-ink-muted: 168 175 170;
+  --color-ink-faint: 110 118 113;
+
+  --color-success: 73 173 122;
+  --color-warning: 237 154 92;
+  --color-error: 229 100 100;
+
+  --color-border: 42 50 44;
+}
+
+body {
+  background-color: rgb(var(--color-surface));
+  color: rgb(var(--color-ink));
+  font-family: var(--font-body), sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display), sans-serif;
+}
+
+/* Respect reduced-motion preference site-wide (SRS Part 9 §16 / accessibility) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -45,8 +45,8 @@ export default async function CheckoutPage() {
     );
   }
 
-  const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
-
+ const defaultAddress =
+  addresses.find((address) => address.isDefault) ?? addresses[0]!;
   let initialQuote: CheckoutQuote | null = null;
   let initialError: string | null = null;
   try {

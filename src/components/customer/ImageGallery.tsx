@@ -20,7 +20,15 @@ export function ImageGallery({ images, productName }: ImageGalleryProps) {
     );
   }
 
-  const activeImage = images[activeIndex] ?? images[0];
+ const activeImage = images[activeIndex];
+
+if (!activeImage) {
+  return (
+    <div className="flex aspect-square w-full items-center justify-center rounded-card bg-surface-subtle text-ink-faint">
+      <FruitPlaceholderIcon />
+    </div>
+  );
+}
 
   return (
     <div className="flex flex-col gap-3">

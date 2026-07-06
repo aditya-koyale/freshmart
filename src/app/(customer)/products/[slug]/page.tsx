@@ -39,12 +39,15 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
     throw error;
   }
 
-  const averageRating =
-    product.reviews.length > 0
-      ? product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length
-      : null;
+ const averageRating =
+  product.reviews.length > 0
+    ? product.reviews.reduce(
+        (sum: number, r: { rating: number }) => sum + r.rating,
+        0,
+      ) / product.reviews.length
+    : null;
 
-  return (
+return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <Breadcrumbs
         items={[
@@ -118,7 +121,15 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
           </p>
         ) : (
           <ul className="mt-5 flex flex-col gap-4">
-            {product.reviews.map((review) => (
+           {product.reviews.map(
+  (review: {
+    id: string;
+    rating: number;
+    title?: string | null;
+    comment?: string | null;
+    createdAt: Date;
+    user: { fullName: string };
+  }) => (
               <li key={review.id}>
                 <Card padding="md">
                   <div className="flex items-center justify-between">

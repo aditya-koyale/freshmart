@@ -12,6 +12,11 @@ import { db } from '@/lib/db';
  *    verification check can be inserted later without restructuring the
  *    provider or session callbacks.
  */
+type AuthUser = {
+  id: string;
+  role: 'ADMIN' | 'CUSTOMER';
+  rememberMe?: boolean;
+};
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt',
@@ -77,14 +82,16 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.role = (user as { role: string }).role;
-        token.id = user.id;
+     if (user) {
+  const authUser = user as AuthUser;
 
-        const rememberMe = (user as { rememberMe?: boolean }).rememberMe ?? false;
-        const ttlSeconds = rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60;
-        token.exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-      }
+  token.role = authUser.role;
+  token.id = authUser.id;
+
+  const rememberMe = authUser.rememberMe ?? false;
+  const ttlSeconds = rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60;
+  token.exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+}
       return token;
     },
     async session({ session, token }) {

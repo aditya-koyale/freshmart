@@ -24,16 +24,34 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         const { url } = await uploadImage(buffer, 'banners');
         imageUrl = url;
       }
-      updateData = adminBannerSchema.partial().parse({
-        title: formData.get('title') || null,
-        subtitle: formData.get('subtitle') || null,
-        buttonText: formData.get('buttonText') || null,
-        destinationLink: formData.get('destinationLink') || null,
-        displayOrder: formData.get('displayOrder') ? Number(formData.get('displayOrder')) : undefined,
-        isActive: formData.has('isActive') ? formData.get('isActive') !== 'false' : undefined,
-      });
+     const parsed = adminBannerSchema.partial().parse({
+  title: formData.get('title') || null,
+  subtitle: formData.get('subtitle') || null,
+  buttonText: formData.get('buttonText') || null,
+  destinationLink: formData.get('destinationLink') || null,
+  displayOrder: formData.get('displayOrder')
+    ? Number(formData.get('displayOrder'))
+    : undefined,
+  isActive: formData.has('isActive')
+    ? formData.get('isActive') !== 'false'
+    : undefined,
+  startDate: formData.get('startDate') || null,
+  endDate: formData.get('endDate') || null,
+});
+
+updateData = {
+  ...parsed,
+  startDate: parsed.startDate ? new Date(parsed.startDate) : null,
+  endDate: parsed.endDate ? new Date(parsed.endDate) : null,
+};
     } else {
-      updateData = adminBannerSchema.partial().parse(await request.json());
+      const parsed = adminBannerSchema.partial().parse(await request.json());
+
+updateData = {
+  ...parsed,
+  startDate: parsed.startDate ? new Date(parsed.startDate) : null,
+  endDate: parsed.endDate ? new Date(parsed.endDate) : null,
+};
     }
 
     const updated = await db.banner.update({

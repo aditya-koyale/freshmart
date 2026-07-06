@@ -25,15 +25,15 @@ export const PUBLIC_PRODUCT_INCLUDE = {
  * this service directly do not. Serializing here keeps Prisma-specific
  * types from leaking into the presentation layer at all.
  */
-export function serializeProductForClient<
-  T extends { weightVariants: Array<{ price: Prisma.Decimal; salePrice: Prisma.Decimal | null }> },
->(product: T) {
+
+export function serializeProductForClient(product: any) {
   return {
     ...product,
-    weightVariants: product.weightVariants.map((variant) => ({
+    weightVariants: product.weightVariants.map((variant: any) => ({
       ...variant,
-      price: variant.price.toNumber(),
-      salePrice: variant.salePrice?.toNumber() ?? null,
+      price: Number(variant.price),
+      salePrice:
+        variant.salePrice != null ? Number(variant.salePrice) : null,
     })),
   };
 }
@@ -75,7 +75,7 @@ export async function listPublicProducts(query: ProductListQuery) {
     db.product.count({ where }),
   ]);
 
-  const items = rawItems.map(serializeProductForClient);
+const items = rawItems.map((item) => serializeProductForClient(item));
 
   return {
     items,

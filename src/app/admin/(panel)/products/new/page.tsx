@@ -4,6 +4,8 @@ import { PageHeader } from '@/components/admin/PageHeader';
 import { ProductCreateForm } from '@/components/admin/ProductCreateForm';
 import { listAdminCategories } from '@/services/categoryService';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = { title: 'New Product — FreshMart Admin' };
 
 export default async function NewProductPage() {
